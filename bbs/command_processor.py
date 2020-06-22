@@ -36,10 +36,7 @@ class BaseProcessor:
     async def dispatch(self, line):
         cmd, args = self.parseline(line)
         func = getattr(self, f'do_{cmd}', self.default)
-        try:
-            return await func(*args)
-        except Exception as E:
-            return f"ERROR: {E}"
+        return await func(*args)
 
     async def do_help(self, *args):
         """
