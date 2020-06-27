@@ -1,7 +1,51 @@
 import asyncio
+import collections
 import contextlib
+import re
+
 
 from bbs.readline.readlike import edit, keys
+
+class _ReadBuffer:
+    def __init__(self, reader):
+        self._reader = reader
+        self._buffer = []
+
+    def push(self, value):
+        self._buffer.extend(value)
+
+    async def pop(self):
+        if not self._buffer:
+            return await self._reader.read(1)
+        return self._buffer.pop()
+
+    def popall(self):
+        data = ''.join(self._buffer)
+        self._buffer.clear()
+        return data
+
+    async def readuntil(self, separator='\n'):
+        while True:
+            if separator in self._buffer:
+                break
+            self.push(await self._reader.read(1))
+        text = ''.join(self._buffer).split(separator, 1)[0] + separator
+        del self._buffer[: len(text)]
+        return text
+
+    async def read(self, size=-1):
+        if size == 0:
+            return ''
+        if size < 0:
+            blocks = [self.popall()]
+            while True:
+                block = await self._reader.read()
+                if not block:
+                    break
+                blocks.append(block)
+            return ''.join(blocks)
+        return ''.join([await self.pop() for _ in range(size)])
+
 
 class Readline:
     BREAK = object()
@@ -12,6 +56,7 @@ class Readline:
         self._echo = True
         self._readtask = None
         self._readlock = asyncio.Lock()
+        self._readbuffer = _ReadBuffer(reader)
 
     async def prompt(self, prompt):
         self.write(prompt)
@@ -34,14 +79,15 @@ class Readline:
             self._readtask.cancel()
         async with self._readlock:
             self._writer.write('\x1b[6n')
-            resp = ''
+            old_data = await self._readbuffer.readuntil('\x1b')
+            resp = '\x1b'
             ch = ''
-            while ch != 'R':
+            while not (match := re.match(r"^\x1b\[(\d+);(\d+)R", resp)):
                 ch = await self._reader.read(1)
                 resp += ch
-            return (
-                tuple(int(x) for x in resp[2:-1].split(';'))
-            )
+            if old_data[:-1]:
+                self._readbuffer.push(old_data[:-1])
+            return tuple(int(x) for x in match.groups())
 
     def echo(self, data):
         if self._echo:
@@ -78,13 +124,13 @@ class Readline:
         return await self._writer.wait_closed()
 
     async def read(self, n=-1):
-        return await self._reader.read(n)
+        return await self._readbuffer.read(n)
 
     async def readexactly(self, n):
         return await self._reader.readexactly(n)
 
     async def readuntil(self, separator='\n'):
-        return await self._reader.readuntil(separator)
+        return await self._readbuffer.readuntil(separator)
 
     async def readline(self, *, offset=None):
         _keys = keys()
