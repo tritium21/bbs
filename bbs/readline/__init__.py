@@ -7,6 +7,9 @@ import re
 from bbs.readline.readlike import edit, keys
 
 class _ReadBuffer:
+    # The point of this code is to fight against a race condition in get_position that
+    # sees data that it shouldn't in the reader.  So....we buffer it, do our thing, and
+    # get on with our lives.  I think this works.  It appears to work.
     def __init__(self, reader):
         self._reader = reader
         self._buffer = []
