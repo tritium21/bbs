@@ -1,5 +1,7 @@
 import shlex
 
+from colorama import Fore, Back, Style
+
 from bbs.chat import get_chat
 
 class Exit(BaseException):
@@ -52,7 +54,7 @@ class BaseProcessor:
             for cmd, doc
             in commands
         )
-        return (f"Available Commands:\r\n{body}")
+        return (f"{Fore.BLUE}Available Commands:\r\n{body}{Style.RESET_ALL}")
 
     async def do_exit(self, *args):
         """
